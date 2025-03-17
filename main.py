@@ -1,11 +1,17 @@
 import streamlit as st
-import openai
+import google.generativeai as genai
 import os
+from dotenv import load_dotenv
 
-openai.api_key = os.getenv("OPENAI_API_KEY")
+load_dotenv()
+API_KEY = os.getenv("GOOGLE_API_KEY")
+
+genai.configure(api_key=API_KEY) 
+
+MODEL_NAME = "gemini-2.0-flash"  
 
 prompt = """
-You are an AI assistant specializing in Paysecure, an online orchestration platform. Your role is to assist users with their questions about PaySecure's services, including API integration, authentication, payment flows, webhooks, sandbox and live modes, and troubleshooting. Use clear and concise language, ensuring users receive accurate, step-by-step guidance. If a question is unclear, ask for clarification instead of assuming the intent.
+You are an AI assistant specializing in PaySecure, an online orchestration platform. Your role is to assist users with their questions about PaySecure's services, including API integration, authentication, payment flows, webhooks, sandbox and live modes, and troubleshooting. Use clear and concise language, ensuring users receive accurate, step-by-step guidance. If a question is unclear, ask for clarification instead of assuming the intent.
 
 **Rules for Responding:**
 1. **Only Answer PaySecure-Related Questions:**  
@@ -46,35 +52,27 @@ You are an AI assistant specializing in Paysecure, an online orchestration platf
 Your goal is to respond in a friendly, professional, and helpful manner while strictly adhering to the above guidelines.
 """
 
-
-st.title("Paysecure FAQ Chatbot")
-st.write("Hey there! I'm your friendly chatbot. Ask me anything about Paysecure, and let's chat!")
-
+st.title("PaySecure FAQ Chatbot")
+st.write("Hey there! I'm your friendly chatbot. Ask me anything about PaySecure, and let's chat!")
 
 if "messages" not in st.session_state:
     st.session_state["messages"] = []
-
 
 for message in st.session_state["messages"]:
     with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🤖"):
         st.write(message["content"])
 
-user_query = st.chat_input("Ask me a question about Paysecure!")
+user_query = st.chat_input("Ask me a question about PaySecure!")
 
 if user_query:
     st.session_state["messages"].append({"role": "user", "content": user_query})
-
-    response = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": prompt},
-            *st.session_state["messages"],
-        ]
-    )
-    bot_response = response["choices"][0]["message"]["content"]
-
+    
+    chat = genai.GenerativeModel(MODEL_NAME).start_chat(history=[])
+    response = chat.send_message(prompt + "\n\nUser: " + user_query)
+    bot_response = response.text if response else "Sorry, I couldn't process that."
+    
     st.session_state["messages"].append({"role": "assistant", "content": bot_response})
-
+    
     with st.chat_message("user", avatar="👤"):
         st.write(user_query)
     with st.chat_message("assistant", avatar="🤖"):
