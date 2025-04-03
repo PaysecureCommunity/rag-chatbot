@@ -1,79 +1,61 @@
-import streamlit as st
-import google.generativeai as genai
 import os
+import streamlit as st
 from dotenv import load_dotenv
+from agno.agent import Agent
+from agno.models.google import Gemini
+from agno.tools.firecrawl import FirecrawlTools  # 🔥 Firecrawl for scraping
 
 load_dotenv()
-API_KEY = os.getenv("GOOGLE_API_KEY")
 
-genai.configure(api_key=API_KEY) 
+DOCS_URL = "https://developer.paysecure.net/"
 
-MODEL_NAME = "gemini-2.0-flash"  
-
-prompt = """
-You are an AI assistant specializing in Paysecure, an online orchestration platform. Your role is to assist users with their questions about PaySecure's services, including API integration, authentication, payment flows, webhooks, sandbox and live modes, and troubleshooting. Use clear and concise language, ensuring users receive accurate, step-by-step guidance. If a question is unclear, ask for clarification instead of assuming the intent.
-
-**Rules for Responding:**
-1. **Only Answer Paysecure-Related Questions:**  
-   - If a user asks about topics unrelated to Paysecure, politely inform them that you can only assist with PaySecure-related queries.
-   - Example response: *"I'm here to help with Paysecure-related questions. Let me know if you need assistance with API integration, payment processing, or troubleshooting!"*
-
-2. **Provide Accurate, Step-by-Step Guidance:**  
-   - Always give clear instructions when answering Paysecure questions.
-   - Use structured responses to ensure users understand the solution.
-
-3. **Dashboard Access & Live Mode:**  
-   - Guide users to log in to the Paysecure dashboard by providing the correct URL and login process.
-   - Explain how to switch to live mode by toggling the "Is Sandbox" option in the Merchant Dashboard.
-
-4. **API Keys & Brand IDs:**  
-   - Provide instructions on obtaining API keys and Brand IDs for live mode.
-   - Ensure users understand that API keys and Brand IDs must be used in the Authorization header as a Bearer token.
-   - Clarify that separate API keys and Brand IDs are required for staging and live environments.
-
-5. **Sandbox vs. Live Mode:**  
-   - Inform users that test data from the sandbox cannot be used in live mode.
-   - Explain that card payments can be tested in sandbox mode, but APM methods require live testing.
-
-6. **Webhooks & Event Notifications:**  
-   - Define webhooks and explain their importance for real-time transaction updates.
-   - Encourage users to set up webhooks for all key events.
-   - Provide instructions on configuring webhooks in the merchant dashboard.
-
-7. **Transaction Events & API Endpoints:**  
-   - Describe major transaction events such as "Payment in Process," "Expired," "Error," and "Paid" for both Pay-In and Payout transactions.
-   - Guide users on how to check transaction statuses using API endpoints in Postman.
-   - Specify the correct API endpoints for initiating Pay-In and Payout transactions.
-
-8. **Additional Merchant Tools:**  
-   - Mention that merchants can track transaction statistics via the BO Dashboard under Reports.
-   - Ensure users know where to find payout reports and analytics.
-
-Your goal is to respond in a friendly, professional, and helpful manner while strictly adhering to the above guidelines.
-"""
-
-st.title("Paysecure FAQ Chatbot")
-st.write("Hey there! I'm your friendly chatbot. Ask me anything about Paysecure, and let's chat!")
-
-if "messages" not in st.session_state:
-    st.session_state["messages"] = []
-
-for message in st.session_state["messages"]:
-    with st.chat_message(message["role"], avatar="👤" if message["role"] == "user" else "🤖"):
-        st.write(message["content"])
-
-user_query = st.chat_input("Ask me a question about Paysecure!")
-
-if user_query:
-    st.session_state["messages"].append({"role": "user", "content": user_query})
+class PaysecureAgent:
+    """AI Agent for Paysecure, using Firecrawl to scrape and retrieve documentation."""
     
-    chat = genai.GenerativeModel(MODEL_NAME).start_chat(history=[])
-    response = chat.send_message(prompt + "\n\nUser: " + user_query)
-    bot_response = response.text if response else "Sorry, I couldn't process that."
+    def __init__(self, firecrawl_api_key: str, gemini_api_key: str, model_id: str = "gemini-1.5-flash"):
+        self.agent = Agent(
+            model=Gemini(id=model_id, api_key=gemini_api_key),
+            tools=[FirecrawlTools(scrape=True)],  # 🔥 Firecrawl tool for scraping docs
+            instructions=[
+                "You are an AI assistant for Paysecure, a payment processing company.",
+                f"Scrape and search for API and integration answers from {DOCS_URL} using Firecrawl.",
+                "Provide clear, concise, and accurate answers based on Paysecure's developer documentation."
+            ],
+            markdown=True,
+            show_tool_calls=True,
+            description="I am the Paysecure AI assistant, helping employees and merchants with queries about PaySecure's products and documentation."
+        )
     
-    st.session_state["messages"].append({"role": "assistant", "content": bot_response})
+    def respond(self, query: str) -> str:
+        """Scrape and generate a response using Firecrawl for retrieving relevant documentation."""
+        response = self.agent.run(f"""User Query: {query}
+        
+        Scrape {DOCS_URL} and provide a clear, concise answer using Firecrawl.""")
+        
+        return response.content if response else "I'm unable to retrieve an answer at the moment."
+
+def main():
+    st.set_page_config(page_title="Paysecure AI Assistant", page_icon="💳", layout="wide")
+
+    firecrawl_api_key = os.getenv("FIRECRAWL_API_KEY")
+    gemini_api_key = os.getenv("GEMINI_API_KEY")
+
+    if not firecrawl_api_key or not gemini_api_key:
+        st.error("⚠️ Missing API keys. Please set FIRECRAWL_API_KEY and GEMINI_API_KEY as environment variables.")
+        return
     
-    with st.chat_message("user", avatar="👤"):
-        st.write(user_query)
-    with st.chat_message("assistant", avatar="🤖"):
-        st.write(bot_response)
+    model_id = "gemini-1.5-flash"  # Default model
+    st.session_state.agent = PaysecureAgent(firecrawl_api_key, gemini_api_key, model_id)
+
+    st.title("💳 PaySecure AI Assistant")
+    st.write("Ask me anything about PaySecure's products and documentation!")
+
+    query = st.text_area("Enter your query:", "How do I integrate PaySecure into my e-commerce website?")
+
+    if st.button("Ask AI"):
+        with st.spinner("Fetching response..."):
+            response = st.session_state.agent.respond(query)
+            st.markdown(response)
+
+if __name__ == "__main__":
+    main()
