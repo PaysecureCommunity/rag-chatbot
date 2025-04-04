@@ -2,4 +2,5 @@ streamlit>=1.30.0
 python-dotenv>=1.0.0
 firecrawl>=0.1.0
 agno>=0.1.0
+google-genai
 
